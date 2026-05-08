@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>犬のおさんぽ</title>
+  <style>
+    :root {
+      --ink: #2e2721;
+      --paper: rgba(255, 252, 244, 0.9);
+      --line: rgba(72, 56, 36, 0.18);
+      --button: #ffffff;
+      --button-active: #ffdf8a;
+      --shadow: 0 12px 30px rgba(74, 54, 26, 0.18);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      color: var(--ink);
+      font-family: ui-rounded, "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+      background: #9edaf3;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .game {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      background:
+        linear-gradient(#92d8f6 0%, #c9edff 45%, #f5f4dc 100%);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      left: max(14px, env(safe-area-inset-left));
+      right: max(14px, env(safe-area-inset-right));
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      pointer-events: none;
+    }
+
+    .meters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .pill {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      backdrop-filter: blur(8px);
+    }
+
+    .mood {
+      width: min(178px, 36vw);
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(70, 56, 34, 0.12);
+    }
+
+    .mood > span {
+      display: block;
+      width: 76%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #ffbb66, #7fcf9d);
+      transition: width 180ms ease;
+    }
+
+    .state {
+      min-width: 92px;
+      justify-content: center;
+    }
+
+    .controls {
+      position: fixed;
+      left: max(14px, env(safe-area-inset-left));
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(14px, env(safe-area-inset-bottom));
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    .pad,
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    button {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(72, 56, 36, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: var(--shadow);
+      color: var(--ink);
+      font: 800 24px/1 system-ui, sans-serif;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:active,
+    button.is-down {
+      background: var(--button-active);
+      transform: translateY(1px);
+    }
+
+    .small {
+      width: 46px;
+      height: 46px;
+      font-size: 18px;
+    }
+
+    .loading {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(#92d8f6, #f4edc9);
+      color: var(--ink);
+      font-size: clamp(18px, 4vw, 28px);
+      font-weight: 800;
+      transition: opacity 250ms ease, visibility 250ms ease;
+    }
+
+    .loading.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    @media (max-width: 680px) {
+      .pill {
+        min-height: 34px;
+        padding: 7px 9px;
+        font-size: 12px;
+      }
+
+      .state {
+        min-width: 72px;
+      }
+
+      .mood {
+        width: min(132px, 34vw);
+      }
+
+      button {
+        width: 50px;
+        height: 50px;
+        font-size: 22px;
+      }
+
+      .small {
+        width: 44px;
+        height: 44px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="game" aria-label="犬のおさんぽ">
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="hud" aria-hidden="true">
+      <div class="meters">
+        <div class="pill"><span>さんぽ</span><span id="distance">0m</span></div>
+        <div class="pill"><span>お花</span><span id="flowers">0/6</span></div>
+        <div class="pill"><span class="mood"><span id="moodBar"></span></span></div>
+      </div>
+    </div>
+
+    <div class="controls" aria-label="操作">
+      <div class="pad">
+        <button type="button" data-hold="left" aria-label="左へ歩く" title="左">‹</button>
+        <button type="button" data-hold="right" aria-label="右へ歩く" title="右">›</button>
+      </div>
+      <div class="actions">
+        <button class="small" type="button" data-hold="sniff" aria-label="においをかぐ" title="におい">⌄</button>
+        <button type="button" data-tap="jump" aria-label="ジャンプ" title="ジャンプ">⌃</button>
+        <button class="small" type="button" data-hold="look" aria-label="見上げる" title="見上げる">•</button>
+      </div>
+    </div>
+
+    <div class="loading" id="loading">おさんぽ準備中</div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const loading = document.getElementById("loading");
+    const distanceText = document.getElementById("distance");
+    const flowersText = document.getElementById("flowers");
+    const moodBar = document.getElementById("moodBar");
+
+    const dogAnimations = {
+      idle: ["idle.png", "idle1.png", "idle2.png", "idle3.png", "idle4.png"],
+      walk: ["walk1.png", "walk2.png", "walk3.png", "walk4.png"],
+      run: ["run1.png", "run2.png", "run3.png", "run4.png"],
+      jump: ["jump1.png", "jump2.png", "jump3.png", "jump4.png"],
+      sniff: ["sniff1.png", "sniff2.png", "sniff3.png", "sniff4.png"],
+      look: ["look1.png", "look2.png", "look3.png", "look4.png"],
+      refuse: ["refuse1.png", "refuse2.png", "refuse3.png", "refuse4.png"]
+    };
+
+    const imagePaths = {
+      sun: "assets/sky/sun.png",
+      cloud1: "assets/sky/sora1.png",
+      cloud2: "assets/sky/sora2.png",
+      cloud3: "assets/sky/sora3.png",
+      bird1: "assets/sky/bird1.png",
+      bird3: "assets/sky/bird3.png",
+      road1: "assets/map3/road1.png",
+      road2: "assets/map3/road2.png",
+      car: "assets/map3/car.png",
+      car2: "assets/map3/car2.png",
+      car3: "assets/map3/car3.png",
+      car4: "assets/map3/car4.png",
+      car5: "assets/map3/car5.png",
+      car6: "assets/map3/car6.png",
+      car7: "assets/map3/car7.png",
+      bike1: "assets/map3/bike1.png",
+      bike2: "assets/map3/bike2.png",
+      bike3: "assets/map3/bike3.png",
+      curb: "assets/map2/enseki.png",
+      path: "assets/map2/hodo.png",
+      puddle: "assets/map2/mizu.png",
+      can1: "assets/map2/kan1.png",
+      can2: "assets/map2/kan2.png",
+      can3: "assets/map2/kan3.png",
+      cone: "assets/map2/corn.png",
+      house1: "assets/map1/home1.png",
+      house2: "assets/map1/home2.png",
+      house3: "assets/map1/home3.png",
+      shop: "assets/map1/home4.png",
+      tree1: "assets/map1/ki1.png",
+      tree2: "assets/map1/ki2.png",
+      bench: "assets/map1/bench.png",
+      swing: "assets/map1/buranco.png",
+      slide: "assets/map1/suberidai.png",
+      pole: "assets/map1/denchu.png",
+      wire: "assets/map1/densen.png",
+      light: "assets/map1/light.png",
+      post: "assets/map1/post.png",
+      signal: "assets/map1/singo.png",
+      wall: "assets/map1/wall.png",
+      grass1: "assets/map1/gras1.png",
+      grass2: "assets/map1/gras2.png",
+      bush1: "assets/map1/kusa1.png",
+      bush2: "assets/map1/kusa2.png",
+      bush3: "assets/map1/kusa3.png",
+      bush4: "assets/map1/kusa4.png",
+      flower1: "assets/map1/hana1.png",
+      flower2: "assets/map1/hana2.png",
+      flower3: "assets/map1/hana3.png",
+      flower4: "assets/map1/hana4.png",
+      bed: "assets/map1/kadan.png",
+      bed2: "assets/map1/kadan2.png",
+      rock1: "assets/map1/ishi1.png",
+      rock2: "assets/map2/ishi2.png",
+      drink: "assets/map1/drink.png",
+      trash1: "assets/map1/dust1.png",
+      trash2: "assets/map1/dust2.png",
+      trash3: "assets/map2/dust3.png",
+      actionKunkun: "assets/action/kunkun.png",
+      actionKyorokyoro: "assets/action/kyorokyoro.png",
+      actionPyon: "assets/action/pyon.png",
+      actionRun: "assets/action/run.png",
+      actionTeku: "assets/action/teku.png"
+    };
+
+    for (const [name, files] of Object.entries(dogAnimations)) {
+      files.forEach((file, index) => {
+        imagePaths[`dog_${name}_${index}`] = `assets/dog/${file}`;
+      });
+    }
+
+    const images = {};
+    const loadImage = (key, src) => new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve([key, img]);
+      img.onerror = () => resolve([key, null]);
+      img.src = src;
+    });
+
+    const keys = {
+      left: false,
+      right: false,
+      jump: false,
+      sniff: false,
+      look: false,
+      run: false,
+      refuse: false
+    };
+
+    const world = {
+      width: 5200,
+      camera: 0,
+      time: 0,
+      collected: 0,
+      flowersTotal: 6
+    };
+
+    const player = {
+      x: 250,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      facing: 1,
+      grounded: true,
+      mood: 78,
+      state: "idle",
+      stateTime: 0,
+      sniffCooldown: 0,
+      refuseTimer: 0
+    };
+
+    const scenery = [
+      { key: "house1", x: 170, y: 0, w: 260, layer: "back" },
+      { key: "tree1", x: 520, y: 0, w: 190, layer: "back" },
+      { key: "house3", x: 760, y: 0, w: 320, layer: "back" },
+      { key: "pole", x: 1160, y: 0, w: 120, layer: "back" },
+      { key: "wire", x: 1240, y: 0, w: 390, layer: "skyline" },
+      { key: "bench", x: 1450, y: 0, w: 210, layer: "front" },
+      { key: "post", x: 1770, y: 0, w: 96, layer: "front" },
+      { key: "house2", x: 2040, y: 0, w: 220, layer: "back" },
+      { key: "light", x: 2360, y: 0, w: 90, layer: "back" },
+      { key: "swing", x: 2630, y: 0, w: 260, layer: "back" },
+      { key: "slide", x: 3020, y: 0, w: 210, layer: "front" },
+      { key: "tree2", x: 3320, y: 0, w: 160, layer: "back" },
+      { key: "shop", x: 3620, y: 0, w: 290, layer: "back" },
+      { key: "drink", x: 4080, y: 0, w: 125, layer: "front" },
+      { key: "signal", x: 4380, y: 0, w: 92, layer: "back" },
+      { key: "house1", x: 4700, y: 0, w: 250, layer: "back" }
+    ];
+
+    const sidewalkItems = [
+      { key: "bush1", x: 430, w: 120 },
+      { key: "bed2", x: 1070, w: 170 },
+      { key: "bush2", x: 2870, w: 140 },
+      { key: "bed", x: 4170, w: 320 },
+      { key: "bush3", x: 4630, w: 170 }
+    ];
+
+    const curbObstacles = [
+      { key: "rock1", x: 1280, w: 108, blockW: 76 },
+      { key: "puddle", x: 1770, w: 150, blockW: 124, y: "dog" },
+      { key: "can1", x: 2200, w: 72, blockW: 46 },
+      { key: "cone", x: 2480, w: 78, blockW: 52 },
+      { key: "rock2", x: 3180, w: 92, blockW: 62 },
+      { key: "can2", x: 3770, w: 74, blockW: 48 },
+      { key: "can3", x: 4310, w: 70, blockW: 48 }
+    ];
+
+    const crosswalks = [
+      { x: 900, w: 132 },
+      { x: 2510, w: 132 },
+      { x: 4120, w: 132 }
+    ];
+
+    const flowers = [
+      { key: "flower1", x: 620, collected: false },
+      { key: "flower2", x: 1210, collected: false },
+      { key: "flower3", x: 1710, collected: false },
+      { key: "flower4", x: 2760, collected: false },
+      { key: "flower1", x: 3490, collected: false },
+      { key: "flower2", x: 4520, collected: false }
+    ];
+
+    const clouds = [
+      { key: "cloud1", x: 130, y: 74, w: 290, speed: 8 },
+      { key: "cloud2", x: 880, y: 112, w: 220, speed: 13 },
+      { key: "cloud3", x: 1540, y: 70, w: 165, speed: 10 },
+      { key: "cloud1", x: 2530, y: 98, w: 310, speed: 8 },
+      { key: "cloud2", x: 3790, y: 76, w: 215, speed: 12 }
+    ];
+
+    const flying = [
+      { key: "bird3", x: 610, y: 160, w: 128, speed: 18 },
+      { key: "bird1", x: 3160, y: 135, w: 82, speed: 22 }
+    ];
+
+    const traffic = [
+      { key: "car3", x: 560, w: 150, lane: 0, speed: 58 },
+      { key: "bike2", x: 930, w: 104, lane: 1, speed: 72 },
+      { key: "car4", x: 1380, w: 188, lane: 0, speed: 52 },
+      { key: "bike1", x: 1880, w: 118, lane: 1, speed: 76 },
+      { key: "car2", x: 2400, w: 124, lane: 0, speed: 54 },
+      { key: "car5", x: 2920, w: 176, lane: 1, speed: 49 },
+      { key: "bike3", x: 3480, w: 106, lane: 0, speed: 70 },
+      { key: "car7", x: 4060, w: 158, lane: 1, speed: 50 },
+      { key: "car6", x: 4700, w: 258, lane: 0, speed: 44 },
+      { key: "car", x: 5520, w: 164, lane: 1, speed: 47 }
+    ];
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function groundY() {
+      return Math.min(window.innerHeight - 112, window.innerHeight * 0.72);
+    }
+
+    function roadY() {
+      return groundY() + 72;
+    }
+
+    function dogGroundY() {
+      return groundY() + 18;
+    }
+
+    function obstacleGroundY() {
+      return groundY() + 54;
+    }
+
+    function drawImage(key, x, y, width, anchor = "bottom") {
+      const img = images[key];
+      if (!img) return;
+      const height = width * (img.height / img.width);
+      const dy = anchor === "center" ? y - height / 2 : anchor === "top" ? y : y - height;
+      ctx.drawImage(img, x, dy, width, height);
+    }
+
+    function drawTiled(key, x, y, width, height, offset, scale = 1) {
+      const img = images[key];
+      if (!img) return;
+      const tileW = img.width * scale;
+      const tileH = img.height * scale;
+      let start = x - ((offset % tileW) + tileW) % tileW;
+      while (start < width + tileW) {
+        ctx.drawImage(img, start, y, tileW, tileH);
+        start += tileW;
+      }
+    }
+
+    function drawGrassZone(width, gy) {
+      const scale = 0.36;
+      const tileStep = 285;
+      const startIndex = Math.floor(world.camera / tileStep) - 1;
+      const endIndex = startIndex + Math.ceil(width / tileStep) + 3;
+
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        const key = Math.abs(Math.sin(index * 17.23) * 10000) % 1 > 0.48 ? "grass1" : "grass2";
+        const img = images[key];
+        if (!img) continue;
+        const tileW = img.width * scale;
+        const tileH = img.height * scale;
+        const x = index * tileStep - world.camera * 1.04;
+        ctx.drawImage(img, x, gy - tileH + 8, tileW, tileH);
+      }
+    }
+
+    function update(dt) {
+      world.time += dt;
+      player.sniffCooldown = Math.max(0, player.sniffCooldown - dt);
+      player.refuseTimer = Math.max(0, player.refuseTimer - dt);
+
+      const accel = keys.run ? 920 : 650;
+      const maxSpeed = keys.run ? 260 : 150;
+      const friction = 840;
+      let input = 0;
+      if (keys.left) input -= 1;
+      if (keys.right) input += 1;
+
+      if (input) {
+        player.vx += input * accel * dt;
+        player.vx = Math.max(-maxSpeed, Math.min(maxSpeed, player.vx));
+        player.facing = input;
+      } else {
+        const slow = Math.sign(player.vx) * friction * dt;
+        if (Math.abs(slow) > Math.abs(player.vx)) player.vx = 0;
+        else player.vx -= slow;
+      }
+
+      if (keys.jump && player.grounded) {
+        player.vy = -430;
+        player.grounded = false;
+        keys.jump = false;
+      }
+
+      player.vy += 1120 * dt;
+      player.y += player.vy * dt;
+      if (player.y > 0) {
+        player.y = 0;
+        player.vy = 0;
+        player.grounded = true;
+      }
+
+      const oldX = player.x;
+      player.x += player.vx * dt;
+      resolveObstacleCollision(oldX);
+      if (player.x < 90) {
+        player.x = 90;
+        player.vx = 0;
+        player.refuseTimer = 0.45;
+      }
+      if (player.x > world.width - 170) {
+        player.x = world.width - 170;
+        player.vx = 0;
+        player.refuseTimer = 0.45;
+      }
+
+      if (Math.abs(player.vx) > 10) {
+        player.mood = Math.min(100, player.mood + 1.8 * dt);
+      } else {
+        player.mood = Math.max(50, player.mood - 0.4 * dt);
+      }
+
+      if (keys.sniff && player.grounded) {
+        flowers.forEach((flower) => {
+          if (!flower.collected && Math.abs(player.x - flower.x) < 88) {
+            flower.collected = true;
+            world.collected += 1;
+            player.mood = Math.min(100, player.mood + 9);
+          }
+        });
+      }
+
+      let nextState = "idle";
+      if (player.refuseTimer > 0) nextState = "refuse";
+      else if (!player.grounded) nextState = "jump";
+      else if (keys.sniff) nextState = "sniff";
+      else if (keys.look) nextState = "look";
+      else if (Math.abs(player.vx) > 190) nextState = "run";
+      else if (Math.abs(player.vx) > 12) nextState = "walk";
+
+      if (nextState !== player.state) {
+        player.state = nextState;
+        player.stateTime = 0;
+      } else {
+        player.stateTime += dt;
+      }
+
+      const viewportW = window.innerWidth;
+      const targetCamera = Math.max(0, Math.min(world.width - viewportW, player.x - viewportW * 0.4));
+      world.camera += (targetCamera - world.camera) * Math.min(1, dt * 5);
+
+      distanceText.textContent = `${Math.floor(player.x / 10)}m`;
+      flowersText.textContent = `${world.collected}/${world.flowersTotal}`;
+      moodBar.style.width = `${Math.round(player.mood)}%`;
+    }
+
+    function resolveObstacleCollision(oldX) {
+      if (!player.grounded || Math.abs(player.vx) < 1) return;
+
+      const playerHalfW = 34;
+      for (const obstacle of curbObstacles) {
+        const obstacleCenter = obstacle.x + obstacle.w / 2;
+        const obstacleHalfW = (obstacle.blockW || obstacle.w * 0.55) / 2;
+        const left = obstacleCenter - obstacleHalfW;
+        const right = obstacleCenter + obstacleHalfW;
+        const wasLeft = oldX + playerHalfW <= left;
+        const wasRight = oldX - playerHalfW >= right;
+        const overlaps = player.x + playerHalfW > left && player.x - playerHalfW < right;
+        if (!overlaps) continue;
+
+        if (player.vx > 0 && wasLeft) {
+          player.x = left - playerHalfW;
+        } else if (player.vx < 0 && wasRight) {
+          player.x = right + playerHalfW;
+        } else {
+          const pushLeftX = left - playerHalfW;
+          const pushRightX = right + playerHalfW;
+          player.x = Math.abs(player.x - pushLeftX) < Math.abs(player.x - pushRightX) ? pushLeftX : pushRightX;
+        }
+        player.vx = 0;
+        player.refuseTimer = 0.35;
+        break;
+      }
+    }
+
+    function drawBackground(width, height) {
+      const gy = groundY();
+      const ry = roadY();
+
+      const sky = ctx.createLinearGradient(0, 0, 0, height);
+      sky.addColorStop(0, "#8fd6f5");
+      sky.addColorStop(0.55, "#d7f2ff");
+      sky.addColorStop(1, "#fff2c7");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, width, height);
+
+      const sunSize = Math.max(150, Math.min(230, width * 0.18));
+      drawImage("sun", width - sunSize * 0.8, sunSize * 0.56, sunSize, "center");
+
+      clouds.forEach((cloud) => {
+        const parallax = world.camera * 0.12;
+        const drift = world.time * cloud.speed;
+        const x = ((cloud.x - parallax + drift) % (world.width * 0.7)) - 160;
+        drawImage(cloud.key, x, cloud.y, cloud.w, "top");
+      });
+
+      flying.forEach((item) => {
+        const x = ((item.x - world.camera * 0.25 + world.time * item.speed) % (world.width * 0.75)) - 120;
+        const bob = Math.sin(world.time * 2 + item.x) * 4;
+        drawImage(item.key, x, item.y + bob, item.w, "top");
+      });
+
+      ctx.fillStyle = "#d9ecaa";
+      ctx.fillRect(0, gy - 82, width, 112);
+      drawGrassZone(width, gy);
+      ctx.fillStyle = "#d5d6d1";
+      ctx.fillRect(0, gy + 8, width, 66);
+      drawTiled("curb", 0, gy + 8, width, 66, world.camera * 0.96, 0.42);
+      ctx.fillStyle = "rgba(51, 45, 38, 0.55)";
+      ctx.fillRect(0, gy + 70, width, 4);
+
+      ctx.fillStyle = "#9fa19d";
+      ctx.fillRect(0, ry, width, height - ry);
+      drawTiled("road1", 0, ry + 10, width, 62, world.camera * 1.12, 0.5);
+      drawTiled("road2", 0, ry + 76, width, 48, world.camera * 1.25, 0.56);
+    }
+
+    function drawSceneryLayer(layer) {
+      const gy = groundY();
+      scenery.filter((item) => item.layer === layer).forEach((item) => {
+        const x = item.x - world.camera * (layer === "skyline" ? 0.72 : 0.86);
+        if (x < -420 || x > window.innerWidth + 260) return;
+        const yOffset = layer === "skyline" ? -250 : layer === "back" ? 2 : 16;
+        drawImage(item.key, x, gy + yOffset, item.w);
+      });
+    }
+
+    function drawGroundItems() {
+      const gy = groundY();
+      crosswalks.forEach((crosswalk) => {
+        const x = crosswalk.x - world.camera;
+        if (x < -180 || x > window.innerWidth + 120) return;
+        drawImage("path", x, roadY() + 12, crosswalk.w);
+      });
+
+      sidewalkItems.forEach((item) => {
+        const x = item.x - world.camera;
+        if (x < -360 || x > window.innerWidth + 220) return;
+        drawImage(item.key, x, gy, item.w);
+      });
+
+      curbObstacles.forEach((obstacle) => {
+        const x = obstacle.x - world.camera;
+        if (x < -180 || x > window.innerWidth + 120) return;
+        const y = obstacle.y === "dog" ? dogGroundY() + 4 : obstacleGroundY() + (obstacle.lift || 0);
+        drawImage(obstacle.key, x, y, obstacle.w);
+      });
+
+      flowers.forEach((flower) => {
+        if (flower.collected) return;
+        const x = flower.x - world.camera;
+        if (x < -120 || x > window.innerWidth + 90) return;
+        const hop = Math.sin(world.time * 2.6 + flower.x) * 2;
+        drawImage(flower.key, x, gy - 2 + hop, 72);
+      });
+    }
+
+    function drawDog() {
+      const frames = dogAnimations[player.state];
+      const frameRate = player.state === "idle" ? 4.6 : player.state === "walk" ? 7.4 : player.state === "run" ? 9.4 : 6.2;
+      const frameIndex = Math.floor(player.stateTime * frameRate) % frames.length;
+      const imageKey = `dog_${player.state}_${frameIndex}`;
+      const img = images[imageKey];
+      if (!img) return;
+
+      const size = Math.max(164, Math.min(244, window.innerHeight * 0.28));
+      const x = player.x - world.camera;
+      const imageBottomInset = size * 0.25;
+      const footY = dogGroundY() + player.y;
+      const y = footY - size + imageBottomInset;
+
+      const shadowW = size * (player.grounded ? 0.46 : 0.34);
+      const shadowA = player.grounded ? 0.18 : 0.08;
+      ctx.fillStyle = `rgba(73, 54, 36, ${shadowA})`;
+      ctx.beginPath();
+      ctx.ellipse(x + size * 0.02, dogGroundY() + 10, shadowW, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(x, y);
+      if (player.facing < 0) {
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, -size * 0.54, 0, size, size);
+      } else {
+        ctx.drawImage(img, -size * 0.46, 0, size, size);
+      }
+      ctx.restore();
+
+      drawActionText(x, y, size);
+    }
+
+    function drawActionText(dogX, dogY, dogSize) {
+      const actionForState = {
+        walk: "actionTeku",
+        run: "actionRun",
+        jump: "actionPyon",
+        sniff: "actionKunkun",
+        look: "actionKyorokyoro"
+      };
+      const key = actionForState[player.state];
+      const img = images[key];
+      if (!img) return;
+
+      const widthByState = {
+        walk: 108,
+        run: 192,
+        jump: 104,
+        sniff: 118,
+        look: 134
+      };
+      const textW = Math.min(dogSize * 0.68, widthByState[player.state] || 112);
+      const textH = textW * (img.height / img.width);
+      const side = player.facing >= 0 ? 1 : -1;
+      const bob = Math.sin(world.time * 5.5) * 3;
+      let rotation = Math.sin(world.time * 2.2) * 0.035;
+
+      let x = dogX + side * dogSize * 0.22;
+      let y = dogY + dogSize * 0.22 + bob;
+
+      if (player.state === "sniff") {
+        x = dogX + side * dogSize * 0.38;
+        y = dogY + dogSize * 0.12 + bob;
+      } else if (player.state === "jump") {
+        x = dogX + side * dogSize * 0.05;
+        y = dogY - textH * 0.12 + bob;
+      } else if (player.state === "walk") {
+        const tekuSide = Math.floor(player.stateTime * 3.2) % 2 === 0 ? 1 : -1;
+        x = dogX + tekuSide * dogSize * 0.38;
+        y = dogY + dogSize * 0.02 + bob;
+        rotation = tekuSide > 0 ? 0.16 : -0.16;
+      } else if (player.state === "run") {
+        x = dogX + side * dogSize * 0.04;
+        y = dogY - textH * 0.08 + bob;
+        rotation = Math.sin(world.time * 8) * 0.05;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.94;
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+      ctx.drawImage(img, -textW / 2, -textH / 2, textW, textH);
+      ctx.restore();
+    }
+
+    function drawCars() {
+      const ry = roadY();
+      const loopWidth = world.width + window.innerWidth + 900;
+      traffic.forEach((vehicle) => {
+        let x = vehicle.x - ((world.time * vehicle.speed + world.camera * 0.5) % loopWidth);
+        while (x < -vehicle.w - 280) x += loopWidth;
+        if (x > window.innerWidth + 280) return;
+
+        const laneBottom = vehicle.lane === 0 ? ry + 92 : ry + 156;
+        const size = vehicle.lane === 0 ? vehicle.w * 0.88 : vehicle.w;
+        drawImage(vehicle.key, x, laneBottom, size);
+      });
+    }
+
+    function render() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      drawBackground(width, height);
+      drawSceneryLayer("skyline");
+      drawSceneryLayer("back");
+      drawGroundItems();
+      drawSceneryLayer("front");
+      drawDog();
+      drawCars();
+    }
+
+    let lastTime = performance.now();
+    function loop(now) {
+      const dt = Math.min(0.033, (now - lastTime) / 1000);
+      lastTime = now;
+      update(dt);
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    function setButtonDown(name, value) {
+      keys[name] = value;
+      document.querySelectorAll(`[data-hold="${name}"]`).forEach((button) => {
+        button.classList.toggle("is-down", value);
+      });
+    }
+
+    window.addEventListener("resize", resize);
+    const keyboardControls = new Set([
+      "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+      "KeyA", "KeyD", "KeyW", "KeyS", "KeyE",
+      "Space", "ShiftLeft", "ShiftRight"
+    ]);
+
+    window.addEventListener("keydown", (event) => {
+      if (keyboardControls.has(event.code)) event.preventDefault();
+      if (event.repeat && event.code !== "Space") return;
+      if (event.code === "ArrowLeft" || event.code === "KeyA") setButtonDown("left", true);
+      if (event.code === "ArrowRight" || event.code === "KeyD") setButtonDown("right", true);
+      if (event.code === "ArrowDown" || event.code === "KeyS") setButtonDown("sniff", true);
+      if (event.code === "ArrowUp" || event.code === "KeyW" || event.code === "Space") keys.jump = true;
+      if (event.code === "KeyE") setButtonDown("look", true);
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") keys.run = true;
+      if (event.code === "KeyR") player.refuseTimer = 0.8;
+    });
+
+    window.addEventListener("keyup", (event) => {
+      if (keyboardControls.has(event.code)) event.preventDefault();
+      if (event.code === "ArrowLeft" || event.code === "KeyA") setButtonDown("left", false);
+      if (event.code === "ArrowRight" || event.code === "KeyD") setButtonDown("right", false);
+      if (event.code === "ArrowDown" || event.code === "KeyS") setButtonDown("sniff", false);
+      if (event.code === "KeyE") setButtonDown("look", false);
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") keys.run = false;
+    });
+
+    document.querySelectorAll("[data-hold]").forEach((button) => {
+      const name = button.dataset.hold;
+      const press = (event) => {
+        event.preventDefault();
+        setButtonDown(name, true);
+      };
+      const release = (event) => {
+        event.preventDefault();
+        setButtonDown(name, false);
+      };
+      button.addEventListener("pointerdown", press);
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointercancel", release);
+      button.addEventListener("pointerleave", release);
+    });
+
+    document.querySelector("[data-tap='jump']").addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      keys.jump = true;
+      event.currentTarget.classList.add("is-down");
+    });
+
+    document.querySelector("[data-tap='jump']").addEventListener("pointerup", (event) => {
+      event.preventDefault();
+      event.currentTarget.classList.remove("is-down");
+    });
+
+    Promise.all(Object.entries(imagePaths).map(([key, src]) => loadImage(key, src))).then((entries) => {
+      entries.forEach(([key, img]) => {
+        images[key] = img;
+      });
+      resize();
+      loading.classList.add("is-hidden");
+      requestAnimationFrame(loop);
+    });
+  </script>
+</body>
+</html>
