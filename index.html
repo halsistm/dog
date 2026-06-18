@@ -16,6 +16,10 @@
 
     * {
       box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     html,
@@ -28,6 +32,8 @@
       font-family: ui-rounded, "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif;
       background: #9edaf3;
       touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
       user-select: none;
     }
 
@@ -136,6 +142,9 @@
       font: 800 24px/1 system-ui, sans-serif;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     button:active,
@@ -168,6 +177,10 @@
     }
 
     @media (max-width: 680px) {
+      .controls {
+        bottom: max(72px, calc(env(safe-area-inset-bottom) + 54px));
+      }
+
       .pill {
         min-height: 34px;
         padding: 7px 9px;
@@ -193,6 +206,95 @@
         height: 44px;
       }
     }
+    .toast {
+      position: fixed;
+      left: 50%;
+      top: 17%;
+      transform: translateX(-50%);
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: rgba(255, 252, 244, 0.94);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      font-size: clamp(13px, 3.4vw, 17px);
+      font-weight: 800;
+      color: var(--ink);
+      white-space: nowrap;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+      transition: opacity 400ms ease, transform 400ms ease;
+      z-index: 5;
+    }
+
+    .toast.is-hidden {
+      opacity: 0;
+      transform: translate(-50%, -14px);
+    }
+
+    .result {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(40, 30, 18, 0.42);
+      backdrop-filter: blur(3px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 280ms ease, visibility 280ms ease;
+      z-index: 10;
+    }
+
+    .result.is-shown {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .result-card {
+      width: min(86vw, 360px);
+      padding: 26px 24px;
+      border-radius: 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      text-align: center;
+      transform: translateY(10px) scale(0.95);
+      transition: transform 280ms ease;
+    }
+
+    .result.is-shown .result-card {
+      transform: translateY(0) scale(1);
+    }
+
+    .result-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .result-stars {
+      font-size: 40px;
+      letter-spacing: 6px;
+      color: #ffc23d;
+      margin: 6px 0 14px;
+      text-shadow: 0 2px 0 rgba(180, 130, 30, 0.25);
+    }
+
+    .result-stats {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 2;
+      margin-bottom: 20px;
+    }
+
+    .result-btn {
+      width: auto;
+      height: auto;
+      padding: 13px 24px;
+      border-radius: 999px;
+      font: 800 16px/1 ui-rounded, "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+      background: var(--button-active);
+      border: 1px solid rgba(72, 56, 36, 0.25);
+    }
   </style>
 </head>
 <body>
@@ -201,8 +303,11 @@
 
     <div class="hud" aria-hidden="true">
       <div class="meters">
-        <div class="pill"><span>さんぽ</span><span id="distance">0m</span></div>
-        <div class="pill"><span>お花</span><span id="flowers">0/6</span></div>
+        <div class="pill"><span>🌸</span><span id="flowers">0/6</span></div>
+        <div class="pill"><span>🦴</span><span id="bones">0/10</span></div>
+        <div class="pill"><span>💎</span><span id="treasures">0/6</span></div>
+        <div class="pill"><span>🐾</span><span id="friends">0/3</span></div>
+        <div class="pill"><span>⭐</span><span id="score">0</span></div>
         <div class="pill"><span class="mood"><span id="moodBar"></span></span></div>
       </div>
     </div>
@@ -219,6 +324,17 @@
       </div>
     </div>
 
+    <div class="toast" id="toast">🌸お花・🦴ほね・💎おたからを あつめて 🚩ゴールへ！</div>
+
+    <div class="result" id="result" aria-hidden="true">
+      <div class="result-card">
+        <div class="result-title">おさんぽ かんりょう！</div>
+        <div class="result-stars" id="resultStars">★★★</div>
+        <div class="result-stats" id="resultStats"></div>
+        <button class="result-btn" type="button" id="restartBtn">もういちど おさんぽ</button>
+      </div>
+    </div>
+
     <div class="loading" id="loading">おさんぽ準備中</div>
   </main>
 
@@ -226,9 +342,17 @@
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
     const loading = document.getElementById("loading");
-    const distanceText = document.getElementById("distance");
     const flowersText = document.getElementById("flowers");
+    const bonesText = document.getElementById("bones");
+    const friendsText = document.getElementById("friends");
+    const scoreText = document.getElementById("score");
+    const treasuresText = document.getElementById("treasures");
     const moodBar = document.getElementById("moodBar");
+    const toastEl = document.getElementById("toast");
+    const resultEl = document.getElementById("result");
+    const resultStars = document.getElementById("resultStars");
+    const resultStats = document.getElementById("resultStats");
+    const restartBtn = document.getElementById("restartBtn");
 
     const dogAnimations = {
       idle: ["idle.png", "idle1.png", "idle2.png", "idle3.png", "idle4.png"],
@@ -335,7 +459,15 @@
       camera: 0,
       time: 0,
       collected: 0,
-      flowersTotal: 6
+      flowersTotal: 6,
+      bones: 0,
+      bonesTotal: 0,
+      friends: 0,
+      friendsTotal: 0,
+      score: 0,
+      goalX: 5010,
+      finished: false,
+      paused: false
     };
 
     const player = {
@@ -349,7 +481,8 @@
       state: "idle",
       stateTime: 0,
       sniffCooldown: 0,
-      refuseTimer: 0
+      refuseTimer: 0,
+      lookCooldown: 0
     };
 
     const scenery = [
@@ -404,6 +537,53 @@
       { key: "flower2", x: 4520, collected: false }
     ];
 
+    const bones = [
+      { x: 470 }, { x: 760 }, { x: 1100 }, { x: 1450 }, { x: 1900 },
+      { x: 2350 }, { x: 2780 }, { x: 3300 }, { x: 3850 }, { x: 4480 }
+    ].map((bone) => ({ ...bone, taken: false }));
+    world.bonesTotal = bones.length;
+
+    const dogFriends = [
+      { x: 1330, greeted: false },
+      { x: 2900, greeted: false },
+      { x: 4180, greeted: false }
+    ];
+    world.friendsTotal = dogFriends.length;
+
+    const DIG_TIME = 0.6;
+    const digSpots = [
+      { x: 690, found: false, dig: 0 },
+      { x: 1560, found: false, dig: 0 },
+      { x: 2240, found: false, dig: 0 },
+      { x: 3050, found: false, dig: 0 },
+      { x: 3720, found: false, dig: 0 },
+      { x: 4400, found: false, dig: 0 }
+    ];
+    world.treasures = 0;
+    world.treasuresTotal = digSpots.length;
+
+    const popups = [];
+    const particles = [];
+
+    function addPopup(x, y, text, color) {
+      popups.push({ x, y, text, color: color || "#ff7aa2", life: 0, max: 0.95 });
+    }
+
+    function addParticles(x, y, emoji) {
+      for (let i = 0; i < 5; i += 1) {
+        particles.push({
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 46,
+          vy: -54 - Math.random() * 46,
+          life: 0,
+          max: 0.8 + Math.random() * 0.5,
+          emoji: emoji || "💗",
+          size: 14 + Math.random() * 12
+        });
+      }
+    }
+
     const clouds = [
       { key: "cloud1", x: 130, y: 74, w: 290, speed: 8 },
       { key: "cloud2", x: 880, y: 112, w: 220, speed: 13 },
@@ -447,6 +627,11 @@
 
     function roadY() {
       return groundY() + 72;
+    }
+
+    function bottomSafeReserve() {
+      if (window.innerWidth > 680) return 0;
+      return Math.max(64, Math.min(96, window.innerHeight * 0.1));
     }
 
     function dogGroundY() {
@@ -495,9 +680,11 @@
     }
 
     function update(dt) {
+      if (world.paused) return;
       world.time += dt;
       player.sniffCooldown = Math.max(0, player.sniffCooldown - dt);
       player.refuseTimer = Math.max(0, player.refuseTimer - dt);
+      player.lookCooldown = Math.max(0, player.lookCooldown - dt);
 
       const accel = keys.run ? 920 : 650;
       const maxSpeed = keys.run ? 260 : 150;
@@ -555,9 +742,100 @@
           if (!flower.collected && Math.abs(player.x - flower.x) < 88) {
             flower.collected = true;
             world.collected += 1;
+            world.score += 20;
             player.mood = Math.min(100, player.mood + 9);
+            addPopup(flower.x, groundY() - 40, "+20", "#e9659b");
+            addParticles(flower.x, groundY() - 40, "🌸");
           }
         });
+        dogFriends.forEach((friend) => {
+          if (!friend.greeted && Math.abs(player.x - friend.x) < 94) {
+            friend.greeted = true;
+            world.friends += 1;
+            world.score += 30;
+            player.mood = Math.min(100, player.mood + 12);
+            addPopup(friend.x, groundY() - 64, "ともだち！", "#5aa9ff");
+            addParticles(friend.x, groundY() - 64, "💗");
+          }
+        });
+      }
+
+      bones.forEach((bone) => {
+        if (!bone.taken && player.grounded && Math.abs(player.x - bone.x) < 54) {
+          bone.taken = true;
+          world.bones += 1;
+          world.score += 10;
+          player.mood = Math.min(100, player.mood + 4);
+          addPopup(bone.x, groundY() - 40, "+10", "#f2a23c");
+          addParticles(bone.x, groundY() - 40, "✨");
+        }
+      });
+
+      digSpots.forEach((spot) => {
+        if (spot.found) return;
+        const near = Math.abs(player.x - spot.x) < 66;
+        if (keys.sniff && player.grounded && near) {
+          const prev = spot.dig;
+          spot.dig += dt;
+          if (Math.floor(spot.dig / 0.16) !== Math.floor(prev / 0.16)) {
+            particles.push({
+              x: spot.x + (Math.random() - 0.5) * 30,
+              y: dogGroundY() - 4,
+              vx: (Math.random() - 0.5) * 34,
+              vy: -28 - Math.random() * 22,
+              life: 0,
+              max: 0.5,
+              emoji: "💨",
+              size: 15
+            });
+          }
+          if (spot.dig >= DIG_TIME) {
+            spot.found = true;
+            world.treasures += 1;
+            world.score += 40;
+            player.mood = Math.min(100, player.mood + 14);
+            addPopup(spot.x, groundY() - 58, "おたから みっけ！", "#c97bff");
+            addParticles(spot.x, groundY() - 46, "💎");
+            addParticles(spot.x, groundY() - 46, "✨");
+          }
+        } else if (spot.dig > 0) {
+          spot.dig = Math.max(0, spot.dig - dt * 1.5);
+        }
+      });
+
+      if (keys.look && player.grounded && player.lookCooldown <= 0) {
+        const dogScreenX = player.x - world.camera;
+        for (const item of flying) {
+          const birdX = ((item.x - world.camera * 0.25 + world.time * item.speed) % (world.width * 0.75)) - 120;
+          if (Math.abs(birdX - dogScreenX) < 120) {
+            world.score += 15;
+            player.mood = Math.min(100, player.mood + 6);
+            player.lookCooldown = 2.4;
+            addPopup(player.x, groundY() - 150, "とり みっけ！", "#3fb27f");
+            addParticles(player.x, item.y + 40, "✨");
+            break;
+          }
+        }
+      }
+
+      if (!world.finished && player.x >= world.goalX - 24) {
+        finishGame();
+      }
+
+      for (let i = popups.length - 1; i >= 0; i -= 1) {
+        const popup = popups[i];
+        popup.life += dt;
+        popup.y -= 34 * dt;
+        if (popup.life >= popup.max) popups.splice(i, 1);
+      }
+
+      for (let i = particles.length - 1; i >= 0; i -= 1) {
+        const particle = particles[i];
+        particle.life += dt;
+        particle.x += particle.vx * dt;
+        particle.y += particle.vy * dt;
+        particle.vy += 70 * dt;
+        if (particle.life >= particle.max) particles.splice(i, 1);
       }
 
       let nextState = "idle";
@@ -579,8 +857,11 @@
       const targetCamera = Math.max(0, Math.min(world.width - viewportW, player.x - viewportW * 0.4));
       world.camera += (targetCamera - world.camera) * Math.min(1, dt * 5);
 
-      distanceText.textContent = `${Math.floor(player.x / 10)}m`;
       flowersText.textContent = `${world.collected}/${world.flowersTotal}`;
+      bonesText.textContent = `${world.bones}/${world.bonesTotal}`;
+      treasuresText.textContent = `${world.treasures}/${world.treasuresTotal}`;
+      friendsText.textContent = `${world.friends}/${world.friendsTotal}`;
+      scoreText.textContent = `${world.score}`;
       moodBar.style.width = `${Math.round(player.mood)}%`;
     }
 
@@ -616,6 +897,8 @@
     function drawBackground(width, height) {
       const gy = groundY();
       const ry = roadY();
+      const reserve = bottomSafeReserve();
+      const roadBottom = height - reserve;
 
       const sky = ctx.createLinearGradient(0, 0, 0, height);
       sky.addColorStop(0, "#8fd6f5");
@@ -649,10 +932,19 @@
       ctx.fillStyle = "rgba(51, 45, 38, 0.55)";
       ctx.fillRect(0, gy + 70, width, 4);
 
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, ry, width, Math.max(0, roadBottom - ry));
+      ctx.clip();
       ctx.fillStyle = "#9fa19d";
-      ctx.fillRect(0, ry, width, height - ry);
+      ctx.fillRect(0, ry, width, Math.max(0, roadBottom - ry));
       drawTiled("road1", 0, ry + 10, width, 62, world.camera * 1.12, 0.5);
       drawTiled("road2", 0, ry + 76, width, 48, world.camera * 1.25, 0.56);
+      ctx.restore();
+      if (reserve > 0) {
+        ctx.fillStyle = "#8f938d";
+        ctx.fillRect(0, roadBottom, width, reserve);
+      }
     }
 
     function drawSceneryLayer(layer) {
@@ -796,16 +1088,256 @@
       });
     }
 
+    function drawBone(cx, cy, s) {
+      ctx.save();
+      ctx.fillStyle = "#fffaf0";
+      ctx.strokeStyle = "rgba(150, 110, 60, 0.55)";
+      ctx.lineWidth = 2;
+      const r = s * 0.22;
+      ctx.beginPath();
+      ctx.rect(cx - s * 0.42, cy - s * 0.13, s * 0.84, s * 0.26);
+      ctx.fill();
+      [[-s * 0.42, -1], [-s * 0.42, 1], [s * 0.42, -1], [s * 0.42, 1]].forEach(([dx, dy]) => {
+        ctx.beginPath();
+        ctx.arc(cx + dx, cy + dy * s * 0.2, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.42, cy - s * 0.13);
+      ctx.lineTo(cx + s * 0.42, cy - s * 0.13);
+      ctx.moveTo(cx - s * 0.42, cy + s * 0.13);
+      ctx.lineTo(cx + s * 0.42, cy + s * 0.13);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBones() {
+      bones.forEach((bone) => {
+        if (bone.taken) return;
+        const x = bone.x - world.camera;
+        if (x < -80 || x > window.innerWidth + 80) return;
+        const bob = Math.sin(world.time * 3 + bone.x) * 4;
+        const y = dogGroundY() - 26 + bob;
+        const sparkle = 0.5 + 0.5 * Math.sin(world.time * 4 + bone.x);
+        ctx.save();
+        ctx.globalAlpha = 0.35 + sparkle * 0.4;
+        ctx.fillStyle = "#fff6c8";
+        ctx.beginPath();
+        ctx.arc(x + 16, y - 12, 3 + sparkle * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        drawBone(x, y, 34);
+      });
+    }
+
+    function drawDigSpots() {
+      const groundLine = dogGroundY() + 6;
+      digSpots.forEach((spot) => {
+        if (spot.found) return;
+        const x = spot.x - world.camera;
+        if (x < -80 || x > window.innerWidth + 80) return;
+
+        ctx.fillStyle = "rgba(150, 118, 78, 0.85)";
+        ctx.beginPath();
+        ctx.moveTo(x - 20, groundLine);
+        ctx.quadraticCurveTo(x, groundLine - 16, x + 20, groundLine);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(108, 82, 50, 0.8)";
+        [[-8, -4], [2, -7], [9, -3]].forEach(([dx, dy]) => {
+          ctx.beginPath();
+          ctx.arc(x + dx, groundLine + dy, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        if (spot.dig > 0) {
+          const progress = Math.min(1, spot.dig / DIG_TIME);
+          ctx.save();
+          ctx.strokeStyle = "#c97bff";
+          ctx.lineWidth = 4;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.arc(x, groundLine - 36, 13, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (Math.abs(player.x - spot.x) < 120) {
+          const t = world.time;
+          ctx.save();
+          ctx.fillStyle = "rgba(120, 90, 60, 0.55)";
+          for (let i = 0; i < 3; i += 1) {
+            const phase = ((t * 1.2) + i * 0.4) % 1;
+            const dx = Math.sin((t * 3) + i) * 5;
+            ctx.globalAlpha = 0.6 * (1 - phase);
+            ctx.beginPath();
+            ctx.arc(x + dx, groundLine - 14 - phase * 26, Math.max(0.6, 3 - phase * 1.5), 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+          ctx.font = "700 18px ui-rounded, system-ui";
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#8a6a4a";
+          ctx.fillText("?", x, groundLine - 42 + Math.sin(t * 3) * 3);
+          ctx.restore();
+        }
+      });
+    }
+
+    function drawDogFriends() {
+      const frames = dogAnimations.idle;
+      const footY = dogGroundY();
+      dogFriends.forEach((friend) => {
+        const x = friend.x - world.camera;
+        if (x < -260 || x > window.innerWidth + 220) return;
+        const size = Math.max(120, Math.min(176, window.innerHeight * 0.2));
+        const idx = Math.floor(world.time * 3 + friend.x) % frames.length;
+        const img = images[`dog_idle_${idx}`];
+        const y = footY - size + size * 0.25;
+
+        ctx.fillStyle = "rgba(73, 54, 36, 0.16)";
+        ctx.beginPath();
+        ctx.ellipse(x, footY + 8, size * 0.3, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (img) {
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.scale(-1, 1);
+          ctx.drawImage(img, -size * 0.54, 0, size, size);
+          ctx.restore();
+        }
+
+        const hint = friend.greeted ? "💕" : "❓";
+        const bob = Math.sin(world.time * 2.4 + friend.x) * 3;
+        ctx.font = `${Math.round(size * 0.26)}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.fillText(hint, x, y - size * 0.04 + bob);
+      });
+    }
+
+    function drawGoal() {
+      const x = world.goalX - world.camera;
+      if (x < -200 || x > window.innerWidth + 200) return;
+      const baseY = groundY() + 16;
+      const h = Math.max(150, Math.min(220, window.innerHeight * 0.26));
+      const flagW = 96;
+      const flagH = 60;
+      const wave = Math.sin(world.time * 3) * 5;
+
+      ctx.fillStyle = "#caa15e";
+      ctx.fillRect(x - 4, baseY - h, 8, h);
+      ctx.fillStyle = "#9c7b41";
+      ctx.fillRect(x - 14, baseY - 6, 28, 8);
+
+      ctx.fillStyle = "#ff7aa2";
+      ctx.beginPath();
+      ctx.moveTo(x + 4, baseY - h);
+      ctx.lineTo(x + 4 + flagW, baseY - h + flagH * 0.3 + wave);
+      ctx.lineTo(x + 4, baseY - h + flagH);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "800 22px ui-rounded, system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("ゴール", x + 4 + flagW * 0.42, baseY - h + flagH * 0.58 + wave * 0.5);
+    }
+
+    function drawPopups() {
+      ctx.textAlign = "center";
+      ctx.lineJoin = "round";
+      popups.forEach((popup) => {
+        const x = popup.x - world.camera;
+        const alpha = Math.max(0, 1 - popup.life / popup.max);
+        ctx.globalAlpha = alpha;
+        ctx.font = "800 22px ui-rounded, system-ui";
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+        ctx.strokeText(popup.text, x, popup.y);
+        ctx.fillStyle = popup.color;
+        ctx.fillText(popup.text, x, popup.y);
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function drawParticles() {
+      ctx.textAlign = "center";
+      particles.forEach((particle) => {
+        const x = particle.x - world.camera;
+        ctx.globalAlpha = Math.max(0, 1 - particle.life / particle.max);
+        ctx.font = `${Math.round(particle.size)}px system-ui`;
+        ctx.fillText(particle.emoji, x, particle.y);
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function finishGame() {
+      world.finished = true;
+      world.paused = true;
+      keys.left = keys.right = keys.sniff = keys.look = keys.run = false;
+
+      const got = world.collected + world.bones + world.treasures + world.friends;
+      const total = world.flowersTotal + world.bonesTotal + world.treasuresTotal + world.friendsTotal;
+      const ratio = total ? got / total : 0;
+      let stars = 1;
+      if (ratio >= 0.6) stars = 2;
+      if (ratio >= 0.9) stars = 3;
+
+      resultStars.textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
+      resultStats.innerHTML =
+        `🌸 お花 ${world.collected} / ${world.flowersTotal}<br>` +
+        `🦴 ほね ${world.bones} / ${world.bonesTotal}<br>` +
+        `💎 おたから ${world.treasures} / ${world.treasuresTotal}<br>` +
+        `🐾 ともだち ${world.friends} / ${world.friendsTotal}<br>` +
+        `⭐ なかよしポイント ${world.score}`;
+      resultEl.classList.add("is-shown");
+      resultEl.setAttribute("aria-hidden", "false");
+    }
+
+    function resetGame() {
+      flowers.forEach((flower) => { flower.collected = false; });
+      bones.forEach((bone) => { bone.taken = false; });
+      dogFriends.forEach((friend) => { friend.greeted = false; });
+      digSpots.forEach((spot) => { spot.found = false; spot.dig = 0; });
+      world.collected = 0;
+      world.bones = 0;
+      world.treasures = 0;
+      world.friends = 0;
+      world.score = 0;
+      world.camera = 0;
+      world.finished = false;
+      world.paused = false;
+      player.x = 250;
+      player.y = 0;
+      player.vx = 0;
+      player.vy = 0;
+      player.mood = 78;
+      player.state = "idle";
+      player.stateTime = 0;
+      player.refuseTimer = 0;
+      player.lookCooldown = 0;
+      popups.length = 0;
+      particles.length = 0;
+      resultEl.classList.remove("is-shown");
+      resultEl.setAttribute("aria-hidden", "true");
+    }
+
     function render() {
       const width = window.innerWidth;
       const height = window.innerHeight;
       drawBackground(width, height);
       drawSceneryLayer("skyline");
       drawSceneryLayer("back");
+      drawGoal();
       drawGroundItems();
+      drawDigSpots();
+      drawBones();
+      drawDogFriends();
       drawSceneryLayer("front");
       drawDog();
       drawCars();
+      drawParticles();
+      drawPopups();
     }
 
     let lastTime = performance.now();
@@ -879,6 +1411,12 @@
       event.currentTarget.classList.remove("is-down");
     });
 
+    ["contextmenu", "selectstart", "dragstart"].forEach((eventName) => {
+      window.addEventListener(eventName, (event) => event.preventDefault(), { passive: false });
+    });
+
+    restartBtn.addEventListener("click", resetGame);
+
     Promise.all(Object.entries(imagePaths).map(([key, src]) => loadImage(key, src))).then((entries) => {
       entries.forEach(([key, img]) => {
         images[key] = img;
@@ -886,6 +1424,7 @@
       resize();
       loading.classList.add("is-hidden");
       requestAnimationFrame(loop);
+      setTimeout(() => toastEl.classList.add("is-hidden"), 4200);
     });
   </script>
 </body>
